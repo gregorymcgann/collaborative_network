@@ -29,6 +29,38 @@
         .controls h3 {
             margin-top: 0;
         }
+
+            /* Bar chart container */
+    #bar-chart {
+        border: 1px solid #ccc;
+        width: 800px;
+        height: 300px;
+        margin-bottom: 20px;
+    }
+
+    .bar {
+        fill: steelblue;
+    }
+
+    .bar:hover {
+        fill: darkorange;
+    }
+
+    /* Axis text */
+    .axis text {
+        font-size: 12px;
+    }
+
+    /* Tooltip */
+    .tooltip {
+        position: absolute;
+        text-align: center;
+        padding: 6px;
+        font: 12px sans-serif;
+        background: lightsteelblue;
+        border: 0px;
+        pointer-events: none;
+    }
     </style>
 </head>
 <body>
@@ -47,6 +79,8 @@
         <select id="target-node"></select>
         <button id="add-edge">Add Edge</button>
     </div>
+
+    <div id="bar-chart"></div>
 
     <!-- Include D3.js library -->
     <script src="https://d3js.org/d3.v6.min.js"></script>
@@ -107,6 +141,17 @@ function updateGraph() {
     nodeEnter.merge(node);
 
     // Update simulation
+    simulation.nodes(nodes);
+    simulation.force("link").links(links);
+    simulation.alpha(1).restart();
+
+        // Recalculate betweenness centrality
+        calculateBetweennessCentrality();
+
+    // Update the bar chart
+    updateBarChart();
+
+    // Update the simulation
     simulation.nodes(nodes);
     simulation.force("link").links(links);
     simulation.alpha(1).restart();
@@ -204,6 +249,152 @@ document.getElementById('add-edge').addEventListener('click', () => {
     }
 });
 
+function calculateBetweennessCentrality() {
+    // Initialize betweenness centrality for each node
+    nodes.forEach(node => {
+        node.betweenness = 0;
+    });
+
+    nodes.forEach(s => {
+        let stack = [];
+        let predecessors = {};
+        let sigma = {};
+        let distance = {};
+
+        // Initialize
+        nodes.forEach(t => {
+            predecessors[t.name] = [];
+            sigma[t.name] = 0;
+            distance[t.name] = -1;
+        });
+        sigma[s.name] = 1;
+        distance[s.name] = 0;
+
+        let queue = [s];
+
+        // BFS from node s
+        while (queue.length > 0) {
+            let v = queue.shift();
+            stack.push(v);
+
+            getNeighbors(v).forEach(w => {
+                // Path discovery
+                if (distance[w.name] < 0) {
+                    distance[w.name] = distance[v.name] + 1;
+                    queue.push(w);
+                }
+                // Path counting
+                if (distance[w.name] === distance[v.name] + 1) {
+                    sigma[w.name] += sigma[v.name];
+                    predecessors[w.name].push(v);
+                }
+            });
+        }
+
+        let delta = {};
+        nodes.forEach(t => {
+            delta[t.name] = 0;
+        });
+
+        // Accumulation
+        while (stack.length > 0) {
+            let w = stack.pop();
+            predecessors[w.name].forEach(v => {
+                delta[v.name] += (sigma[v.name] / sigma[w.name]) * (1 + delta[w.name]);
+            });
+            if (w.name !== s.name) {
+                w.betweenness += delta[w.name];
+            }
+        }
+    });
+
+    // Normalize the betweenness centrality values
+    let maxBetweenness = Math.max(...nodes.map(n => n.betweenness));
+    if (maxBetweenness > 0) {
+        nodes.forEach(node => {
+            node.betweenness /= maxBetweenness;
+        });
+    }
+}
+
+function getNeighbors(node) {
+    let neighbors = [];
+    links.forEach(link => {
+        if (link.source.name === node.name) {
+            neighbors.push(link.target);
+        } else if (link.target.name === node.name) {
+            neighbors.push(link.source);
+        }
+    });
+    return neighbors;
+}
+
+// Create SVG canvas for the bar chart
+const barChartSvg = d3.select("#bar-chart")
+    .append("svg")
+    .attr("width", 800)
+    .attr("height", 300);
+
+
+    function updateBarChart() {
+    // Set up dimensions and scales
+    const width = 800;
+    const height = 300;
+    const margin = { top: 20, right: 20, bottom: 70, left: 50 };
+
+    const xScale = d3.scaleBand()
+        .domain(nodes.map(d => d.name))
+        .range([margin.left, width - margin.right])
+        .padding(0.1);
+
+    const yScale = d3.scaleLinear()
+        .domain([0, d3.max(nodes, d => d.betweenness)]).nice()
+        .range([height - margin.bottom, margin.top]);
+
+    // Clear existing content
+    barChartSvg.selectAll("*").remove();
+
+    // Draw bars
+    barChartSvg.selectAll(".bar")
+        .data(nodes)
+        .enter()
+        .append("rect")
+        .attr("class", "bar")
+        .attr("x", d => xScale(d.name))
+        .attr("y", d => yScale(d.betweenness))
+        .attr("width", xScale.bandwidth())
+        .attr("height", d => height - margin.bottom - yScale(d.betweenness))
+        .attr("fill", "#69b3a2");
+
+    // Add x-axis
+    barChartSvg.append("g")
+        .attr("transform", `translate(0,${height - margin.bottom})`)
+        .call(d3.axisBottom(xScale))
+        .selectAll("text")
+        .attr("transform", "rotate(-45)")
+        .attr("text-anchor", "end")
+        .attr("dx", "-0.8em")
+        .attr("dy", "-0.15em");
+
+    // Add y-axis
+    barChartSvg.append("g")
+        .attr("transform", `translate(${margin.left},0)`)
+        .call(d3.axisLeft(yScale));
+
+    // Add labels
+    barChartSvg.append("text")
+        .attr("x", width / 2)
+        .attr("y", height - margin.bottom + 50)
+        .attr("text-anchor", "middle")
+        .text("Node Names");
+
+    barChartSvg.append("text")
+        .attr("x", -height / 2)
+        .attr("y", margin.left - 40)
+        .attr("transform", "rotate(-90)")
+        .attr("text-anchor", "middle")
+        .text("Betweenness Centrality");
+}
 // Initialize the graph and dropdowns
 updateNodeDropdowns();
 updateGraph();
