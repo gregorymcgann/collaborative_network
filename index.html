@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Interactive Network Graph</title>
+    <style>
+        /* Basic styles */
+        body {
+            font-family: Arial, sans-serif;
+        }
+        #graph {
+            border: 1px solid #ccc;
+            width: 800px;
+            height: 600px;
+            margin-bottom: 20px;
+        }
+        .node circle {
+            fill: #1f77b4;
+            stroke: #fff;
+            stroke-width: 1.5px;
+        }
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        .controls h3 {
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="graph"></div>
+
+    <div class="controls">
+        <h3>Add Node</h3>
+        <input type="text" id="node-name" placeholder="Node name">
+        <button id="add-node">Add Node</button>
+    </div>
+
+    <div class="controls">
+        <h3>Add Edge</h3>
+        <select id="source-node"></select>
+        <select id="target-node"></select>
+        <button id="add-edge">Add Edge</button>
+    </div>
+
+    <!-- Include D3.js library -->
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script>
+// Initialize empty graph data
+let nodes = [];
+let links = [];
+
+// Create SVG canvas
+const svg = d3.select("#graph")
+    .append("svg")
+    .attr("width", 800)
+    .attr("height", 600);
+
+// Set up the simulation
+const simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.name).distance(150))
+    .force("charge", d3.forceManyBody().strength(-400))
+    .force("center", d3.forceCenter(400, 300));
+
+// Function to update the graph
+function updateGraph() {
+    // Bind data for links
+    const link = svg.selectAll(".link")
+        .data(links, d => `${d.source.name}-${d.target.name}`);
+
+    // Remove old links
+    link.exit().remove();
+
+    // Add new links
+    const linkEnter = link.enter()
+        .append("line")
+        .attr("class", "link");
+
+    linkEnter.merge(link);
+
+    // Bind data for nodes
+    const node = svg.selectAll(".node")
+        .data(nodes, d => d.name);
+
+    // Remove old nodes
+    node.exit().remove();
+
+    // Add new nodes
+    const nodeEnter = node.enter()
+        .append("g")
+        .attr("class", "node")
+        .call(drag(simulation));
+
+    nodeEnter.append("circle")
+        .attr("r", 15);
+
+    nodeEnter.append("text")
+        .attr("dy", -20)
+        .attr("text-anchor", "middle")
+        .text(d => d.name);
+
+    nodeEnter.merge(node);
+
+    // Update simulation
+    simulation.nodes(nodes);
+    simulation.force("link").links(links);
+    simulation.alpha(1).restart();
+}
+
+// Drag behavior functions
+function drag(simulation) {
+    function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+    }
+
+    function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+    }
+
+    function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+    }
+
+    return d3.drag()
+        .on("start", dragstarted)
+        .on("drag", dragged)
+        .on("end", dragended);
+}
+
+// Update simulation on tick
+simulation.on("tick", () => {
+    svg.selectAll(".link")
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y);
+
+    svg.selectAll(".node")
+        .attr("transform", d => `translate(${d.x},${d.y})`);
+});
+
+// Handle adding nodes
+document.getElementById('add-node').addEventListener('click', () => {
+    const nodeName = document.getElementById('node-name').value.trim();
+    if (nodeName && !nodes.find(n => n.name === nodeName)) {
+        nodes.push({ name: nodeName });
+        updateNodeDropdowns();
+        updateGraph();
+        document.getElementById('node-name').value = '';
+    } else {
+        alert('Please enter a unique node name.');
+    }
+});
+
+// Update dropdown menus
+function updateNodeDropdowns() {
+    const sourceSelect = document.getElementById('source-node');
+    const targetSelect = document.getElementById('target-node');
+
+    // Clear current options
+    sourceSelect.innerHTML = '';
+    targetSelect.innerHTML = '';
+
+    nodes.forEach(node => {
+        const option1 = document.createElement('option');
+        option1.value = node.name;
+        option1.text = node.name;
+        sourceSelect.add(option1);
+
+        const option2 = document.createElement('option');
+        option2.value = node.name;
+        option2.text = node.name;
+        targetSelect.add(option2);
+    });
+}
+
+// Handle adding edges
+document.getElementById('add-edge').addEventListener('click', () => {
+    const sourceName = document.getElementById('source-node').value;
+    const targetName = document.getElementById('target-node').value;
+
+    if (sourceName && targetName && sourceName !== targetName) {
+        // Prevent duplicate edges
+        if (!links.find(l => l.source.name === sourceName && l.target.name === targetName)) {
+            const sourceNode = nodes.find(n => n.name === sourceName);
+            const targetNode = nodes.find(n => n.name === targetName);
+            links.push({ source: sourceNode, target: targetNode });
+            updateGraph();
+        } else {
+            alert('This edge already exists.');
+        }
+    } else {
+        alert('Please select two different nodes.');
+    }
+});
+
+// Initialize the graph and dropdowns
+updateNodeDropdowns();
+updateGraph();
+    </script>
+</body>
+</html>
